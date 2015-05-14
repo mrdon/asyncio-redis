@@ -1949,7 +1949,7 @@ class RedisPoolTest(TestCase):
             # Test default poolsize
             self.assertEqual(connection.poolsize, 1)
 
-            connection.close()
+            yield from asyncio.wait(connection.close())
 
         self.loop.run_until_complete(test())
 

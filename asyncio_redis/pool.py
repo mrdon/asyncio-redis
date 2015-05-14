@@ -135,7 +135,10 @@ class Pool:
         """
         Close all the connections in the pool.
         """
+        closed_futures = []
         for c in self._connections:
-            c.close()
+            closed_futures.append(c.close())
 
         self._connections = []
+
+        return closed_futures

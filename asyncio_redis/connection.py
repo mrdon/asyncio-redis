@@ -46,7 +46,7 @@ class Connection:
         connection.port = port
         connection._loop = loop or asyncio.get_event_loop()
         connection._retry_interval = .5
-        connection._closed = False
+        connection._closed = asyncio.Future(loop=connection._loop)
         connection._closing = False
 
         connection._auto_reconnect = auto_reconnect
@@ -55,6 +55,8 @@ class Connection:
         def connection_lost():
             if connection._auto_reconnect and not connection._closing:
                 asyncio.async(connection._reconnect(), loop=connection._loop)
+            else:
+                connection._closed.set_result(True)
 
         # Create protocol instance
         connection.protocol = protocol_class(password=password, db=db, encoder=encoder,
@@ -120,3 +122,5 @@ class Connection:
 
         if self.protocol.transport:
             self.protocol.transport.close()
+
+        return self._closed
