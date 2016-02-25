@@ -58,6 +58,12 @@ __all__ = (
 
 NoneType = type(None)
 
+# In Python 3.4.4, `async` was renamed to `ensure_future`.
+try:
+    ensure_future = asyncio.ensure_future
+except AttributeError:
+    ensure_future = asyncio.async
+
 
 class ZScoreBoundary:
     """
@@ -611,6 +617,7 @@ class CommandCreator:
         # directly on the protocol, outside of transactions or from the
         # transaction object.
         @wraps(method)
+        @asyncio.coroutine
         def wrapper(protocol_self, *a, **kw):
             # When calling from a transaction
             if protocol_self.in_transaction:
@@ -633,7 +640,7 @@ class CommandCreator:
                         typecheck_return(protocol_self, result)
                         future2.set_result(result)
 
-                    future.add_done_callback(lambda f: asyncio.async(done(f.result()), loop=protocol_self._loop))
+                    future.add_done_callback(lambda f: ensure_future(done(f.result()), loop=protocol_self._loop))
 
                     return future2
 
@@ -688,6 +695,7 @@ _SMALL_INTS = list(str(i).encode('ascii') for i in range(1000))
 
 # List of all command methods.
 _all_commands = []
+
 
 class _command:
     """ Mark method as command (to be passed through CommandCreator for the
@@ -804,7 +812,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # Start parsing reader stream.
         self._reader = StreamReader(loop=self._loop)
         self._reader.set_transport(transport)
-        self._reader_f = asyncio.async(self._reader_coroutine(), loop=self._loop)
+        self._reader_f = ensure_future(self._reader_coroutine(), loop=self._loop)
 
         @asyncio.coroutine
         def initialize():
@@ -823,7 +831,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 if self._pubsub_patterns:
                     yield from self._psubscribe(self._subscription, list(self._pubsub_patterns))
 
-        asyncio.async(initialize(), loop=self._loop)
+        ensure_future(initialize(), loop=self._loop)
 
     def data_received(self, data):
         """ Process data received from Redis server.  """
@@ -978,7 +986,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         # Return the empty queue immediately as an answer.
         if self._in_pubsub:
-            asyncio.async(self._handle_pubsub_multibulk_reply(reply), loop=self._loop)
+            ensure_future(self._handle_pubsub_multibulk_reply(reply), loop=self._loop)
         else:
             cb(reply)
 
@@ -1983,6 +1991,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     # LUA scripting
 
     @_command
+    @asyncio.coroutine
     def register_script(self, script:str) -> 'Script':
         """
         Register a LUA script.
@@ -2008,6 +2017,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(b'script', b'flush')
 
     @_query_command
+    @asyncio.coroutine
     def script_kill(self) -> StatusReply:
         """
         Kill the script currently in execution.  This raises
@@ -2023,6 +2033,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 raise
 
     @_query_command
+    @asyncio.coroutine
     def evalsha(self, sha:str,
                         keys:(ListOf(NativeType), NoneType)=None,
                         args:(ListOf(NativeType), NoneType)=None) -> EvalScriptReply:
